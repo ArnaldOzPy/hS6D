@@ -1,0 +1,22 @@
+
+body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 2rem; }
+.container { max-width: 800px; margin: auto; background: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 0 15px #00ff88; }
+.section { margin-bottom: 2rem; }
+input[type=file], button, a.download-link {
+  margin-top: 1rem;
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  background: #00ff88;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  color: black;
+}
+.info { margin-top: 1rem; background: #222; padding: 1rem; border-radius: 8px; }
+.info div { margin-bottom: 0.5rem; }
+.progress-bar { height: 20px; background: #444; border-radius: 10px; overflow: hidden; margin-top: 0.5rem; }
+.progress-fill { height: 100%; background: #00ff88; width: 0%; text-align: center; color: black; line-height: 20px; }

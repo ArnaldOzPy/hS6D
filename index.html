@@ -1,0 +1,38 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>HyperStorage6D - Compresión Huffman</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+  <h1>HyperStorage6D v1 - Huffman</h1>
+
+  <div class="section">
+    <h2>🗜️ Compresión</h2>
+    <input type="file" id="compressInput">
+    <div class="progress-bar"><div class="progress-fill" id="compressProgress">0%</div></div>
+    <div class="info">
+      <div><strong>Tamaño original:</strong> <span id="originalSize">-</span></div>
+      <div><strong>Tamaño comprimido:</strong> <span id="compressedSize">-</span></div>
+      <div><strong>Compresión lograda:</strong> <span id="compressionRate">-</span></div>
+    </div>
+    <a id="downloadCompressed" class="download-link" style="display:none;">Descargar archivo .h6d</a>
+  </div>
+
+  <div class="section">
+    <h2>📂 Descompresión</h2>
+    <input type="file" id="decompressInput">
+    <div class="progress-bar"><div class="progress-fill" id="decompressProgress">0%</div></div>
+    <div class="info">
+      <div><strong>Tamaño comprimido:</strong> <span id="compressedSizeIn">-</span></div>
+      <div><strong>Tamaño descomprimido:</strong> <span id="decompressedSize">-</span></div>
+    </div>
+    <a id="downloadOriginal" class="download-link" style="display:none;">Descargar archivo original</a>
+  </div>
+</div>
+<script type="module" src="hyper-huffman.js"></script>
+</body>
+</html>
