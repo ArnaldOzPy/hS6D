@@ -1,8 +1,8 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from PIL import Image
 import zlib
+import struct  # Import faltante - esencial para compresión/descompresión
 
 class CubitCompressor:
     def __init__(self):
@@ -221,14 +221,6 @@ class CubitCompressor:
             f_out.write(header)
             f_out.write(compressed_data)
             f_out.write(compressed_metadata)
-
-# En /compress
-return send_file(
-    output_path,
-    as_attachment=True,
-    download_name=f"{os.path.splitext(file.filename)[0]}.cubit"
-)
-
     
     def decompress_file(self, input_file, output_file):
         """Descomprime un archivo comprimido con CUBIT"""
@@ -342,11 +334,4 @@ if __name__ == "__main__":
         print("Recuperación perfecta:", original == decompressed)
     
     # Generar visualizaciones
-    compressor.visualize_compression("test.bin")
-
-# En /decompress
-return send_file(
-    output_path,
-    as_attachment=True,
-    download_name=f"restored_{file.filename.replace('.cubit', '')}"
-)
+    # compressor.visualize_compression("test.bin")  # Descomentar si se necesitan visualizaciones
