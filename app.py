@@ -1,48 +1,56 @@
-from flask import Flask, request, send_file, after_this_request
-from prueba import CubitCompressor  # Asumiendo que está en prueba.py
+# app.py
+from flask import Flask, request, send_file, jsonify
+from prueba import CubitCompressor
 import os
+import logging
 
 app = Flask(__name__)
 compressor = CubitCompressor()
 
-@app.route('/')
-def index():
-    return send_file('index.html')  # Sirve tu interfaz HTML
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 
 @app.route('/compress', methods=['POST'])
 def compress():
     if 'file' not in request.files:
-        return {'error': 'No file provided'}, 400
+        return jsonify({'error': 'No file provided'}), 400
     
     file = request.files['file']
-    unique_id = os.urandom(4).hex()
-    input_path = f"temp_compress_{unique_id}_{file.filename}"
-    output_path = f"compressed_{unique_id}.cubit"
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    # Guardar en directorio temporal seguro
+    temp_dir = "temp_uploads"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    input_path = os.path.join(temp_dir, f"in_{os.urandom(4).hex()}_{file.filename}")
+    output_path = os.path.join(temp_dir, f"out_{os.urandom(4).hex()}.cubit")
     
     file.save(input_path)
     
     try:
         if not compressor.compress_file(input_path, output_path):
-            return {'error': 'Compression process failed'}, 500
+            return jsonify({'error': 'Compression process failed'}), 500
         
+        # Limpiar después de enviar
         @after_this_request
         def cleanup(response):
             try:
                 os.remove(input_path)
                 os.remove(output_path)
-            except OSError as e:
+            except Exception as e:
                 app.logger.error(f"Cleanup error: {str(e)}")
             return response
         
-        download_name = f"{os.path.splitext(file.filename)[0]}.cubit"
         return send_file(
             output_path,
             as_attachment=True,
-            download_name=download_name
+            download_name=f"{os.path.splitext(file.filename)[0]}.cubit",
+            mimetype='application/octet-stream'
         )
     
     except Exception as e:
-        return {'error': str(e)}, 500
+        return jsonify({'error': f"Server error: {str(e)}"}), 500
 
 @app.route('/decompress', methods=['POST'])
 def decompress():
