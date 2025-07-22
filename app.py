@@ -1,10 +1,13 @@
-
 from flask import Flask, request, send_file, after_this_request
-from cubit_compressor import CubitCompressor  # Importa la clase mejorada
+from flask_cors import CORS  # Nuevo import
+from prueba import CubitCompressor
 import os
 
 app = Flask(__name__)
+CORS(app)  # Habilita CORS para todas las rutas
 compressor = CubitCompressor()
+
+# ... [el resto del código permanece igual] ...
 
 @app.route('/compress', methods=['POST'])
 def compress():
