@@ -221,6 +221,14 @@ class CubitCompressor:
             f_out.write(header)
             f_out.write(compressed_data)
             f_out.write(compressed_metadata)
+
+# En /compress
+return send_file(
+    output_path,
+    as_attachment=True,
+    download_name=f"{os.path.splitext(file.filename)[0]}.cubit"
+)
+
     
     def decompress_file(self, input_file, output_file):
         """Descomprime un archivo comprimido con CUBIT"""
@@ -335,3 +343,10 @@ if __name__ == "__main__":
     
     # Generar visualizaciones
     compressor.visualize_compression("test.bin")
+
+# En /decompress
+return send_file(
+    output_path,
+    as_attachment=True,
+    download_name=f"restored_{file.filename.replace('.cubit', '')}"
+)
