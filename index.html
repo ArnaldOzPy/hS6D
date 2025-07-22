@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUBIT Compresor/Descompresor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        input[type="file"] {
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CUBIT Compresor/Descompresor</h1>
+    
+    <!-- Sección de Compresión -->
+    <div class="section">
+        <h2>Comprimir Archivo</h2>
+        <input type="file" id="compressFile">
+        <button onclick="compressFile()">Comprimir Archivo</button>
+        <div id="compressStatus" class="status"></div>
+    </div>
+    
+    <!-- Sección de Descompresión -->
+    <div class="section">
+        <h2>Descomprimir Archivo</h2>
+        <input type="file" id="decompressFile">
+        <button onclick="decompressFile()">Descomprimir Archivo</button>
+        <div id="decompressStatus" class="status"></div>
+    </div>
+
+    <script>
+        async function compressFile() {
+            const fileInput = document.getElementById('compressFile');
+            const statusDiv = document.getElementById('compressStatus');
+            
+            if (!fileInput.files.length) {
+                statusDiv.innerHTML = '<div class="error">Por favor seleccione un archivo</div>';
+                return;
+            }
+
+            statusDiv.innerHTML = 'Comprimiendo...';
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                const response = await fetch('/compress', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error('Error en la compresión');
+                
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                
+                statusDiv.innerHTML = `
+                    <div class="success">Archivo comprimido con éxito!</div>
+                    <a class="download-link" href="${url}" download="archivo_comprimido.cubit">
+                        Descargar archivo comprimido
+                    </a>
+                `;
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        async function decompressFile() {
+            const fileInput = document.getElementById('decompressFile');
+            const statusDiv = document.getElementById('decompressStatus');
+            
+            if (!fileInput.files.length) {
+                statusDiv.innerHTML = '<div class="error">Por favor seleccione un archivo</div>';
+                return;
+            }
+
+            statusDiv.innerHTML = 'Descomprimiendo...';
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                const response = await fetch('/decompress', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error('Error en la descompresión');
+                
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                
+                statusDiv.innerHTML = `
+                    <div class="success">Archivo descomprimido con éxito!</div>
+                    <a class="download-link" href="${url}" download="archivo_descomprimido">
+                        Descargar archivo original
+                    </a>
+                `;
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
