@@ -1,8 +1,11 @@
 import numpy as np
 import os
-import matplotlib.pyplot as plt
+import struct
 import zlib
-import struct  # Import faltante - esencial para compresión/descompresión
+import logging
+
+# Configurar logging para depuración
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class CubitCompressor:
     def __init__(self):
@@ -13,18 +16,15 @@ class CubitCompressor:
             'A': "Alternante",
             'C': "Central"
         }
-        self.save_metadata_symbols()
+        # No necesitamos guardar metadata en archivo para compresión
         self.pattern_visualizations = []
     
-    def save_metadata_symbols(self, filename="CUBIT_METADATA.sis"):
-        with open(filename, 'w') as f:
-            for symbol, meaning in self.metadata_symbols.items():
-                f.write(f"{symbol}={meaning}\n")
-    
     def bytes_to_cubit_grid(self, data_bytes):
-        """Convierte 6 bytes en una cuadrícula CUBIT 6x8"""
+        """Convierte 6 bytes en una cuadrícula CUBIT 6x8, con padding si es necesario"""
+        padding = 0
         if len(data_bytes) < 6:
-            data_bytes = data_bytes + bytes([0] * (6 - len(data_bytes)))
+            padding = 6 - len(data_bytes)
+            data_bytes = data_bytes + bytes([0] * padding)
         
         grid = np.zeros((6, 8), dtype=np.uint8)
         for row in range(6):
@@ -32,12 +32,12 @@ class CubitCompressor:
             for col in range(8):
                 bit = (byte >> (7 - col)) & 1
                 grid[row, col] = bit
-        return grid
+        return grid, padding
     
-    def cubit_grid_to_bytes(self, grid):
-        """Convierte una cuadrícula CUBIT 6x8 en 6 bytes"""
+    def cubit_grid_to_bytes(self, grid, padding=0):
+        """Convierte una cuadrícula CUBIT 6x8 en bytes, removiendo padding"""
         bytes_output = bytearray()
-        for row in range(6):
+        for row in range(6 - padding):  # Remover filas de padding
             byte_val = 0
             for col in range(8):
                 byte_val = (byte_val << 1) | grid[row, col]
@@ -141,9 +141,8 @@ class CubitCompressor:
         else:  # Sin mayoría clara, usar valor central
             return col_data[3]
     
-    def compress_block(self, data_bytes):
-        """Comprime un bloque de 6 bytes a 8 bits + metadatos"""
-        grid = self.bytes_to_cubit_grid(data_bytes)
+    def compress_block(self, grid):
+        """Comprime un bloque de cuadrícula a 8 bits + metadatos"""
         compressed_byte, shifts, _ = self.find_optimal_visual_pattern(grid)
         
         # Codificar metadatos (desplazamientos)
@@ -184,154 +183,142 @@ class CubitCompressor:
         for i in range(6):
             grid[i] = np.roll(grid[i], -shifts[i])
         
-        return self.cubit_grid_to_bytes(grid)
+        return grid
     
     def compress_file(self, input_file, output_file):
-        """Comprime un archivo usando patrones visuales CUBIT"""
-        self.save_metadata_symbols()
+        """Comprime archivos con manejo robusto de cualquier tipo de dato"""
+        try:
+            original_size = os.path.getsize(input_file)
+            total_blocks = (original_size + 5) // 6  # Bloques necesarios
+            
+            with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
+                compressed_data = bytearray()
+                metadata_list = bytearray()
+                padding_info = bytearray()  # Almacenar padding por bloque
+                
+                for _ in range(total_blocks):
+                    data_bytes = f_in.read(6)
+                    grid, padding = self.bytes_to_cubit_grid(data_bytes)
+                    padding_info.append(padding)
+                    
+                    # Comprimir bloque
+                    compressed_byte, metadata = self.compress_block(grid)
+                    compressed_data.append(compressed_byte)
+                    
+                    # Empaquetar metadatos
+                    metadata_list.extend([
+                        (metadata >> 16) & 0xFF,
+                        (metadata >> 8) & 0xFF,
+                        metadata & 0xFF
+                    ])
+                
+                # Comprimir metadatos y padding
+                compressed_metadata = zlib.compress(bytes(metadata_list))
+                compressed_padding = zlib.compress(bytes(padding_info))
+                
+                # Cabecera mejorada
+                header = struct.pack('!III', 
+                                    original_size,
+                                    len(compressed_metadata),
+                                    len(compressed_padding))
+                
+                f_out.write(header)
+                f_out.write(compressed_metadata)
+                f_out.write(compressed_padding)
+                f_out.write(compressed_data)
+            
+            logging.info(f"Compresión exitosa: {input_file} -> {output_file}")
+            compression_ratio = os.path.getsize(output_file) / original_size
+            logging.info(f"Ratio de compresión: {compression_ratio:.2%}")
+            return True
         
-        with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
-            compressed_data = bytearray()
-            metadata_list = bytearray()
-            
-            while True:
-                data_bytes = f_in.read(6)
-                if not data_bytes:
-                    break
-                
-                # Comprimir bloque
-                compressed_byte, metadata = self.compress_block(data_bytes)
-                compressed_data.append(compressed_byte)
-                
-                # Empaquetar metadatos en 3 bytes (18 bits)
-                metadata_list.extend([
-                    (metadata >> 16) & 0xFF,
-                    (metadata >> 8) & 0xFF,
-                    metadata & 0xFF
-                ])
-            
-            # Comprimir metadatos adicionalmente
-            compressed_metadata = zlib.compress(bytes(metadata_list))
-            
-            # Escribir cabecera con información de compresión
-            header = struct.pack('!III', 
-                                len(compressed_data), 
-                                len(compressed_metadata),
-                                os.path.getsize(input_file))
-            f_out.write(header)
-            f_out.write(compressed_data)
-            f_out.write(compressed_metadata)
+        except Exception as e:
+            logging.error(f"Error en compresión: {str(e)}", exc_info=True)
+            return False
     
     def decompress_file(self, input_file, output_file):
-        """Descomprime un archivo comprimido con CUBIT"""
-        with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
-            # Leer cabecera
-            header = f_in.read(12)
-            if len(header) != 12:
-                raise ValueError("Archivo corrupto: cabecera incompleta")
+        """Descomprime archivos con manejo preciso de padding y metadatos"""
+        try:
+            with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
+                # Leer cabecera
+                header = f_in.read(12)
+                if len(header) != 12:
+                    raise ValueError("Cabecera incompleta")
                 
-            data_size, meta_size, original_size = struct.unpack('!III', header)
-            
-            # Leer datos comprimidos
-            compressed_data = f_in.read(data_size)
-            compressed_metadata = f_in.read(meta_size)
-            
-            # Descomprimir metadatos
-            metadata_list = zlib.decompress(compressed_metadata)
-            
-            # Procesar cada bloque
-            for i in range(0, len(compressed_data)):
-                # Cada bloque de metadatos ocupa 3 bytes
-                meta_start = i * 3
-                if meta_start + 3 > len(metadata_list):
-                    break
+                original_size, meta_size, padding_size = struct.unpack('!III', header)
                 
-                metadata_bytes = metadata_list[meta_start:meta_start+3]
-                metadata = (metadata_bytes[0] << 16) | (metadata_bytes[1] << 8) | metadata_bytes[2]
+                # Leer secciones comprimidas
+                compressed_metadata = f_in.read(meta_size)
+                compressed_padding = f_in.read(padding_size)
+                compressed_data = f_in.read()
                 
-                # Descomprimir bloque
-                decompressed_block = self.decompress_block(compressed_data[i], metadata)
-                f_out.write(decompressed_block)
+                # Descomprimir metadatos y padding
+                metadata_list = zlib.decompress(compressed_metadata)
+                padding_info = zlib.decompress(compressed_padding)
+                
+                total_blocks = len(compressed_data)
+                
+                for i in range(total_blocks):
+                    # Obtener metadatos del bloque
+                    meta_start = i * 3
+                    if meta_start + 3 > len(metadata_list):
+                        break
+                    
+                    metadata_bytes = metadata_list[meta_start:meta_start+3]
+                    metadata = (metadata_bytes[0] << 16) | (metadata_bytes[1] << 8) | metadata_bytes[2]
+                    
+                    # Descomprimir bloque
+                    grid = self.decompress_block(compressed_data[i], metadata)
+                    
+                    # Convertir a bytes (manejar padding)
+                    padding = padding_info[i] if i < len(padding_info) else 0
+                    decompressed_bytes = self.cubit_grid_to_bytes(grid, padding)
+                    
+                    # Escribir datos descomprimidos
+                    f_out.write(decompressed_bytes)
+                
+                # Asegurar tamaño exacto
+                f_out.truncate(original_size)
             
-            # Truncar al tamaño original
-            f_out.truncate(original_size)
-    
-    def visualize_compression(self, input_file, output_dir="cubit_visuals"):
-        """Genera visualizaciones de los patrones CUBIT"""
-        os.makedirs(output_dir, exist_ok=True)
+            logging.info(f"Descompresión exitosa: {input_file} -> {output_file}")
+            return True
         
-        with open(input_file, 'rb') as f:
-            index = 0
-            while True:
-                data_bytes = f.read(6)
-                if not data_bytes:
-                    break
-                
-                grid = self.bytes_to_cubit_grid(data_bytes)
-                self.save_grid_visualization(grid, f"{output_dir}/original_{index:04d}.png")
-                
-                # Comprimir y visualizar resultado
-                compressed_byte, shifts, shifted_grid = self.find_optimal_visual_pattern(grid)
-                self.save_grid_visualization(shifted_grid, f"{output_dir}/shifted_{index:04d}.png")
-                
-                # Reconstruir
-                decompressed_bytes = self.decompress_block(compressed_byte, 
-                                                          self.encode_shifts(shifts))
-                decompressed_grid = self.bytes_to_cubit_grid(decompressed_bytes)
-                self.save_grid_visualization(decompressed_grid, f"{output_dir}/reconstructed_{index:04d}.png")
-                
-                index += 1
-    
-    def encode_shifts(self, shifts):
-        """Codifica desplazamientos en entero"""
-        metadata = 0
-        for shift in shifts:
-            metadata = (metadata << 3) | shift
-        return metadata
-    
-    def save_grid_visualization(self, grid, filename):
-        """Guarda una visualización de la cuadrícula"""
-        plt.figure(figsize=(10, 8))
-        plt.imshow(grid, cmap='viridis', interpolation='nearest')
-        plt.colorbar()
-        
-        # Añadir valores de bits
-        for i in range(6):
-            for j in range(8):
-                plt.text(j, i, str(grid[i, j]), 
-                         ha='center', va='center', 
-                         color='white' if grid[i, j] == 0 else 'black',
-                         fontsize=12, fontweight='bold')
-        
-        plt.title("Patrón CUBIT")
-        plt.xlabel("Columnas")
-        plt.ylabel("Filas")
-        plt.savefig(filename)
-        plt.close()
+        except Exception as e:
+            logging.error(f"Error en descompresión: {str(e)}", exc_info=True)
+            return False
 
-# Ejemplo de uso
+# Prueba de integridad
 if __name__ == "__main__":
     compressor = CubitCompressor()
     
     # Crear archivo de prueba
-    with open("test.bin", "wb") as f:
-        # Datos con patrones reconocibles
+    TEST_FILE = "test_data.bin"
+    with open(TEST_FILE, "wb") as f:
         f.write(b"\xAA\x55\xAA\x55\xAA\x55")  # Patrón alternante
         f.write(b"\xFF\x00\xFF\x00\xFF\x00")  # Alto contraste
-        f.write(b"\x18\x3C\x7E\x7E\x3C\x18")  # Patrón simétrico
-        f.write(os.urandom(1024))  # Datos aleatorios
+        f.write(os.urandom(1024))  # 1KB de datos aleatorios
+    
+    # Prueba de compresión/descompresión
+    COMPRESSED_FILE = "test_compressed.cubit"
+    DECOMPRESSED_FILE = "test_decompressed.bin"
     
     # Comprimir
-    compressor.compress_file("test.bin", "test.cubit")
-    
-    # Descomprimir
-    compressor.decompress_file("test.cubit", "test_decompressed.bin")
-    
-    # Verificar integridad
-    with open("test.bin", "rb") as f1, open("test_decompressed.bin", "rb") as f2:
-        original = f1.read()
-        decompressed = f2.read()
-        print("Recuperación perfecta:", original == decompressed)
-    
-    # Generar visualizaciones
-    # compressor.visualize_compression("test.bin")  # Descomentar si se necesitan visualizaciones
+    if compressor.compress_file(TEST_FILE, COMPRESSED_FILE):
+        # Descomprimir
+        if compressor.decompress_file(COMPRESSED_FILE, DECOMPRESSED_FILE):
+            # Verificar integridad
+            with open(TEST_FILE, "rb") as orig, open(DECOMPRESSED_FILE, "rb") as dec:
+                original = orig.read()
+                decompressed = dec.read()
+                if original == decompressed:
+                    print("✓ Integridad verificada: Los archivos son idénticos")
+                    print(f"Tamaño original: {len(original)} bytes")
+                    print(f"Tamaño comprimido: {os.path.getsize(COMPRESSED_FILE)} bytes")
+                    print(f"Ratio: {os.path.getsize(COMPRESSED_FILE)/len(original):.2%}")
+                else:
+                    print("✗ Error: Los archivos son diferentes")
+                    # Encontrar primera diferencia
+                    for i in range(min(len(original), len(decompressed))):
+                        if original[i] != decompressed[i]:
+                            print(f"Primera diferencia en byte {i}: {original[i]} vs {decompressed[i]}")
+                            break
