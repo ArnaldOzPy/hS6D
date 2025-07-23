@@ -1,1 +1,1 @@
-# hS6D-V2
+# hS6D-CUBIT
